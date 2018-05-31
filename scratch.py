@@ -4,6 +4,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import random
 import pandas as pd
+from game import Game
 
 num_periods = 15
 f_horizon = 1
@@ -22,9 +23,14 @@ learning_rate = 0.001
 
 random.seed(111)
 
-onehot = np.identity(3)
+
+# onehot = np.identity(3)
 def generate_batch(batch_size, num_periods, f_horizon):
-    nb_samples = batch_size * num_periods + f_horizon
+    if num_periods > f_horizon:
+        nb_samples = batch_size * num_periods + f_horizon
+    else:
+        nb_samples = batch_size * num_periods
+
     rng = pd.date_range(start='2000', periods=nb_samples, freq='M')
     ts = pd.Series(np.random.uniform(-10, 10, size=len(rng)), rng).cumsum()
 
@@ -45,6 +51,7 @@ print(x.shape)
 print(y.shape)
 np.random.choice([0, 1, 2], 5, p=[0.5, 0.25, 0.25])
 
+
 # Create model
 def create_model(batchX, batchY, init_state):
     state_per_layer_list = tf.unstack(init_state, axis=0)
@@ -53,25 +60,19 @@ def create_model(batchX, batchY, init_state):
          for idx in range(num_layers)]
     )
 
-
     cells = [tf.contrib.rnn.BasicLSTMCell(num_units=state_size, activation=tf.nn.relu, state_is_tuple=True) for _ in range(num_layers)]
     # cells = [tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=dropout) for cell in cells]
     cell = tf.nn.rnn_cell.MultiRNNCell(cells, state_is_tuple=True)
     states_series, current_state = tf.nn.dynamic_rnn(cell, batchX, initial_state=rnn_tuple_state)
-    states_series = tf.reshape(states_series, [-1, state_size])
+    # states_series = tf.reshape(states_series, [-1, state_size])
 
-    stacked_rnn_output = tf.reshape(states_series, [-1, state_size])
-    stacked_outputs = tf.layers.dense(stacked_rnn_output, output)
-    logits = tf.layers.dense(stacked_outputs, num_classes)
+    # stacked_rnn_output = tf.reshape(states_series, [-1, state_size])
+    logits = tf.layers.dense(states_series, num_classes, activation=tf.nn.sigmoid)
+    soft_logits = tf.nn.softmax(logits)
+    outputs = tf.argmax(soft_logits, 2)
 
-    outputs = tf.argmax(tf.nn.softmax(logits), 1)
-
-    loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=batchY)
+    loss = tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=batchY)
     total_loss = tf.reduce_mean(loss)
-    # outputs = tf.reshape(stacked_outputs, [-1, num_periods, output])
-
-    # loss = tf.reduce_sum(tf.square(outputs - batchY))
-
 
     return current_state, loss, total_loss, logits, outputs
 
@@ -88,39 +89,23 @@ current_state, loss, total_loss, logits, outputs = create_model(batchX_placehold
 optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
 train_step = optimizer.minimize(loss)
 
-
-
+x, y = generate_batch(batch_size, 2, f_horizon)
 
 with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
     # Add ops to save and restore all the variables.
     saver = tf.train.Saver()
+    _current_state = np.zeros((num_layers, 2, batch_size, state_size))
 
-    plt.ion()
-    plt.figure()
-    plt.show()
-    loss_list = []
+    x, y = generate_batch(batch_size, 2, f_horizon)
 
-    for epoch_idx in range(num_epochs):
-        print("Epoch", epoch_idx)
+    _outputs, logits = sess.run([outputs, logits], feed_dict={
+        batchX_placeholder: x,
+        batchY_placeholder: y,
+        init_state_placeholder: _current_state
+    })
 
-        for batch_idx in range(num_batches):
-            _current_state = np.zeros((num_layers, 2, batch_size, state_size))
-            batchX, batchY = generate_batch(batch_size, num_periods, f_horizon)
-
-            _total_loss, _train_step, _current_state = sess.run(
-                [total_loss, train_step, current_state],
-                feed_dict={
-                    batchX_placeholder: batchX,
-                    batchY_placeholder: batchY,
-                    init_state_placeholder: _current_state
-                })
-
-            if batch_idx % 100 == 0:
-                print("Step", batch_idx, "Loss", _total_loss)
-
-        save_path = saver.save(sess, "models/model.ckpt")
-        print("Model saved in path: %s" % save_path)
-
-plt.ioff()
-plt.show()
+env = Game(batch_size, 2)
+rewards = env.play(x, _outputs)
+print(rewards)
+print(len(rewards))
