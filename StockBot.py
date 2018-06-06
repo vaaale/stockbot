@@ -46,7 +46,7 @@ print(y.shape)
 np.random.choice([0, 1, 2], 5, p=[0.5, 0.25, 0.25])
 
 # Create model
-def create_model(batchX, batchY, init_state):
+def create_lstm_model(batchX, batchY, init_state, advantage):
     state_per_layer_list = tf.unstack(init_state, axis=0)
     rnn_tuple_state = tuple(
         [tf.nn.rnn_cell.LSTMStateTuple(state_per_layer_list[idx][0], state_per_layer_list[idx][1])
@@ -64,10 +64,13 @@ def create_model(batchX, batchY, init_state):
     stacked_outputs = tf.layers.dense(stacked_rnn_output, output)
     logits = tf.layers.dense(stacked_outputs, num_classes)
 
-    outputs = tf.argmax(tf.nn.softmax(logits), 1)
+    # outputs = tf.argmax(tf.nn.softmax(logits), 1)
+    outputs = tf.multinomial(logits, 1)
+    logprob = -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=batchY, logits=logits)
+    loss = -tf.reduce_mean(logprob * advantage)
 
-    loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=batchY)
-    total_loss = tf.reduce_mean(loss)
+    # loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=batchY)
+    # total_loss = tf.reduce_mean(loss)
     # outputs = tf.reshape(stacked_outputs, [-1, num_periods, output])
 
     # loss = tf.reduce_sum(tf.square(outputs - batchY))
@@ -80,9 +83,10 @@ def create_model(batchX, batchY, init_state):
 batchX_placeholder = tf.placeholder(tf.float32, [batch_size, None, num_input], name='PL_X')
 batchY_placeholder = tf.placeholder(tf.float32, [batch_size, None, num_classes], name='PL_Y')
 init_state_placeholder = tf.placeholder(tf.float32, [num_layers, 2, batch_size, state_size], name='PL_init_state')
+advantage = tf.placeholder(shape=[None], name="PL_ADV", dtype=tf.float32)
 
 # Build model
-current_state, loss, total_loss, logits, outputs = create_model(batchX_placeholder, batchY_placeholder, init_state_placeholder)
+current_state, loss, total_loss, logits, outputs = create_lstm_model(batchX_placeholder, batchY_placeholder, init_state_placeholder)
 
 # Build training step
 optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
