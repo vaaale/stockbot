@@ -83,10 +83,10 @@ def create_lstm_model(batchX, batchY, init_state, advantage):
 batchX_placeholder = tf.placeholder(tf.float32, [batch_size, None, num_input], name='PL_X')
 batchY_placeholder = tf.placeholder(tf.float32, [batch_size, None, num_classes], name='PL_Y')
 init_state_placeholder = tf.placeholder(tf.float32, [num_layers, 2, batch_size, state_size], name='PL_init_state')
-advantage = tf.placeholder(shape=[None], name="PL_ADV", dtype=tf.float32)
+advantage_placeholder = tf.placeholder(shape=[None], name="PL_ADV", dtype=tf.float32)
 
 # Build model
-current_state, loss, total_loss, logits, outputs = create_lstm_model(batchX_placeholder, batchY_placeholder, init_state_placeholder)
+current_state, loss, total_loss, logits, outputs = create_lstm_model(batchX_placeholder, batchY_placeholder, init_state_placeholder, advantage_placeholder)
 
 # Build training step
 optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
