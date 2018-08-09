@@ -17,6 +17,7 @@ batch_size = 32
 
 random.seed(111)
 
+
 def generate_batch(batch_size, num_periods):
     x_batches = np.random.uniform(-10, 10, size=[batch_size, num_periods*lookback_window]).cumsum(axis=1).reshape([-1, 1, num_periods*lookback_window])
     return x_batches
