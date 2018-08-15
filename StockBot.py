@@ -6,7 +6,7 @@ from torch.distributions import Categorical
 
 from game import Game
 import torch
-from torch import nn
+from torch import nn, optim
 from torch.autograd import Variable
 import torch.nn.functional as F
 
@@ -58,6 +58,29 @@ while not done:
     rews.append(rew)
 
 # Compute Q-Values
+gamma = 1
+q_n = []
+reward_to_go = False
+for path in rews:
+    q = 0
+    q_path = []
 
-for reward in rews:
-    print('Test')
+    # Dynamic programming over reversed path
+    for rew in reversed(path):
+        q = rew + gamma * q
+        q_path.append(q)
+    q_path.reverse()
+
+    # Append these q values
+    if not reward_to_go:
+        q_path = [q_path[0]] * len(q_path)
+    q_n.extend(q_path)
+
+
+
+optimizer = optim.SGD(net.parameters(), lr=0.01)
+
+optimizer.zero_grad()
+
+loss.backward()
+optimizer.step()
