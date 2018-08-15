@@ -2,25 +2,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random
 import pandas as pd
+from torch.distributions import Categorical
+
 from game import Game
 import torch
 from torch import nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 
-num_periods = 15
-lookback_window = 10
-state_size = 50
-num_actions = 3
-
-batch_size = 32
-
 random.seed(111)
 
 
-def generate_batch(batch_size, num_periods):
-    x_batches = np.random.uniform(-10, 10, size=[batch_size, num_periods*lookback_window]).cumsum(axis=1).reshape([-1, 1, num_periods*lookback_window])
-    return x_batches
+
+#
+# data = generate_data()
+# data_pct = generate_features(data)
+
+
 
 
 class Net(nn.Module):
@@ -28,30 +26,35 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.conv1 = nn.Conv1d(1, 6, 5)
         self.conv2 = nn.Conv1d(6, 16, 5)
-        self.fc1 = nn.Linear(16*2, 3)
+        self.fc1 = nn.Linear(16*22, 3)
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
-        x = x.view(-1, 16 * 2)
+        x = x.view(-1, 16 * 22)
         x = F.sigmoid(self.fc1(x))
         return x
 
 net = Net()
 print(net)
 
-env = Game(batch_size, num_periods, lookback_window)
+env = Game()
 ob = env.reset()
 
 obs, acs, rews = [], [], []
 done = False
 while not done:
+
     x = torch.from_numpy(ob).float()
     with torch.no_grad():
         obs.append(ob)
-        ac = net.forward(x)
-    acs.append(ac)
-    ob, rew, done = env.step(ob, ac)
+        probs = net.forward(x)
+        m = Categorical(probs)
+        ac = m.sample()
+
+    acs.append(ac.numpy())
+    ob, rew, done = env.step(ob, ac.numpy())
+    loss = -m.log_prob(ac) * torch.from_numpy(rew).float()
     rews.append(rew)
 
 # Compute Q-Values

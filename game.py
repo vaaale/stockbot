@@ -1,5 +1,33 @@
 
 import numpy as np
+import pandas as pd
+
+nb_sources = 10
+f = 5
+timesteps = 1000
+lookback_window = 30
+
+
+def generate_data():
+    data = []
+    for i in range(nb_sources):
+        phase = np.random.uniform(-0.5, 0.5, 1)
+#         f = np.random.uniform(1, 50, 1)
+        x = np.linspace(0, 1, timesteps) + phase
+        y = np.sin(2*np.pi*x*f) * 1
+        y = y + np.random.uniform(-0.5, 0.5, timesteps).cumsum()
+        data.append(y)
+    data = np.asarray(data)
+    return data
+
+
+def generate_features(data):
+    df = pd.DataFrame(data)
+    df = df.T
+    df_pct = ((df.shift(-1) - df) / df.abs())
+    df_pct = np.asarray([df_pct[i:i + lookback_window].T.values for i in range(0, df_pct.shape[0] - lookback_window, 1)])
+    return df_pct
+
 
 class Game:
     ST_NOT_INVESTED = 0
@@ -14,19 +42,21 @@ class Game:
         ST_INVESTED: [AC_NOTHING, AC_SELL]
     }
 
-    def __init__(self, batch_size, num_periods, lookback_window):
-        self.batch_size = batch_size
-        self.num_periods = num_periods
+    def __init__(self):
         self.lookback_window = lookback_window
-        self.states = np.full(batch_size, self.ST_NOT_INVESTED)
-        self.rewards = np.zeros(shape=(batch_size), dtype=np.float32)
+        self.states = np.full(nb_sources, self.ST_NOT_INVESTED)
+        self.rewards = np.zeros(shape=(nb_sources), dtype=np.float32)
         self.observations = []
-        self.data = np.random.uniform(-10, 10, size=[batch_size, num_periods*lookback_window]).cumsum(axis=1).reshape([-1, 1, num_periods*lookback_window])
+        pct_data = generate_features(generate_data())
+        self.data = pct_data
+        self.num_periods = len(self.data)
+        # self.data = np.random.uniform(-10, 10, size=[batch_size, num_periods*lookback_window]).cumsum(axis=1).reshape([-1, 1, num_periods*lookback_window])
         self._step = 0
 
 
     def reset(self):
-        batch =  self.data[:,:,self._step*self.lookback_window:self._step*self.lookback_window+self.lookback_window]
+        batch =  self.data[self._step]
+        batch = batch.reshape(nb_sources, 1, lookback_window)
         self._step += 1
         return batch
 
@@ -58,9 +88,8 @@ class Game:
         reward = 0
         return reward
 
-    def step(self, observations, actions):
-        rewards = np.zeros(shape=(self.batch_size), dtype=np.float32)
-        action = np.argmax(actions.numpy(), axis=1)
+    def step(self, observations, action):
+        rewards = np.zeros(shape=(nb_sources), dtype=np.float32)
         for row, ob, ac in zip(range(len(observations)), observations, action):
             # Update states
             if self.AC_SELL == ac:
@@ -73,7 +102,8 @@ class Game:
 
             self.observations.append(ob)
 
-        batch = self.data[:, :, self._step * self.lookback_window:self._step * self.lookback_window + self.lookback_window]
+        batch = self.data[self._step]
+        batch = batch.reshape(nb_sources, 1, lookback_window)
         self._step += 1
         done = self._step == self.num_periods-1
 
