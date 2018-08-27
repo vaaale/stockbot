@@ -37,12 +37,11 @@ class Policy(nn.Module):
         self.action_space = env.action_space.n
 
         # Define model
-        self.l1 = nn.Linear(self.state_space, 128, bias=False)
-        self.l2 = nn.Linear(128, self.action_space, bias=False)
-
-        self.lstm1 = nn.LSTM(self.state_space, 128, 1, batch_first=True) # [batch, seq, feat] -> [1, 30, 1]
-        self.flat = Flatten()
-        self.sftm = nn.Softmax(dim=-1)
+        # self.l1 = nn.Linear(self.state_space, 128, bias=False)
+        # self.l2 = nn.Linear(128, self.action_space, bias=False)
+        self.conv1 = nn.Conv1d(1, 128, 5)
+        self.conv2 = nn.Conv1d(128, 256, 5)
+        self.fc1 = nn.Linear(256*22, 3)
 
         self.gamma = gamma
 
@@ -63,11 +62,19 @@ class Policy(nn.Module):
         #     nn.Softmax(dim=-1)
         # )
         # return model(x)
-        lstm_out = self.lstm1(x)
-        flat = self.flat(lstm_out)
-        logits = self.l2(flat)
-        pred = self.sftm(logits)
-        return pred
+        model = torch.nn.Sequential(
+            self.conv1,
+            nn.Tanh(),
+            self.conv2,
+            nn.Tanh()
+        )
+        y = model(x)
+        y = y.view(-1, 256 * 22)
+        y = self.fc1(y)
+        y = nn.Softmax(dim=-1)(y)
+        y = y.view(-1)
+
+        return y
 
 
 policy = Policy()
@@ -118,6 +125,26 @@ def update_policy():
     policy.reward_episode = []
 
 
+def plot_stats(episode):
+    data = env.raw_data
+    print(data.shape)
+    xs = np.arange(len(data))
+    byes = env.byes
+    sells = env.sells
+
+    print('Byes: {}'.format(byes))
+    print('Sells: {}'.format(sells))
+
+    ys2 = [data[b] for b in byes]
+    ys3 = [data[s] for s in sells]
+
+    plt.plot(xs, data)
+    plt.scatter(byes, ys2, color='green', marker='o')
+    plt.scatter(sells, ys3, color='blue', marker='X')
+    plt.savefig('figures/plot{}.png'.format(episode))
+    plt.clf()
+
+
 def main(episodes):
     running_reward = 10
     for episode in range(episodes):
@@ -143,6 +170,8 @@ def main(episodes):
         if episode % 50 == 0:
             print('Episode {}\tLast length: {:5d}\tAverage length: {:.2f}'.format(episode, time, running_reward))
             print("running_reward: {}, reward_threshold: {}, solved: {}".format(running_reward, env.spec.reward_threshold, running_reward > env.spec.reward_threshold))
+            print('Last reward: {}'.format(reward))
+            plot_stats(episode)
 
         if running_reward > env.spec.reward_threshold:
             print("Solved! Running reward is now {} and the last episode runs to {} time steps!".format(running_reward,
@@ -150,7 +179,7 @@ def main(episodes):
             break
 
 
-episodes = 5000
+episodes = 1000
 main(episodes)
 
 window = int(episodes/20)
