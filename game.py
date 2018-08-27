@@ -12,8 +12,8 @@ lookback_window = 30
 def generate_data():
     phase = np.random.uniform(-0.5, 0.5, 1)
 #         f = np.random.uniform(1, 50, 1)
-    time = np.linspace(0, 1, timesteps) + phase
-    x = np.sin(2*np.pi*time*f) * 1
+    time = np.linspace(0, 1, timesteps)
+    x = np.sin(2*np.pi*(time + phase) * f) * 1
     x = x + np.random.uniform(-0.5, 0.5, timesteps).cumsum()
     data = np.asarray(x)
     return data
@@ -22,9 +22,14 @@ def generate_data():
 def generate_features(data):
     df = pd.DataFrame(data)
     df_pct = ((df.shift(-1) - df) / df.abs())
-    df_pct = np.asarray([df_pct[i:i + lookback_window].values for i in range(0, df_pct.shape[0] - lookback_window, 1)])
+    # df_pct = np.asarray([df_pct[i:i + lookback_window].values for i in range(0, df_pct.shape[0] - lookback_window, 1)])
     return df_pct
 
+
+def generate_batches():
+    data = generate_features(generate_data())
+    batches = np.asarray([data[i:i + lookback_window].values for i in range(0, data.shape[0] - lookback_window, 1)])
+    return batches
 
 class Game:
     ST_NOT_INVESTED = 0
@@ -43,30 +48,14 @@ class Game:
         self.observation_space = lookback_window
         self.action_space = spaces.Discrete(3)
         self.lookback_window = lookback_window
-        # self.states = np.full(nb_sources, self.ST_NOT_INVESTED)
         self.states = self.ST_NOT_INVESTED
         self.price = 0
-        # self.rewards = np.zeros(shape=(nb_sources), dtype=np.float32)
         self.rewards = 0
-        pct_data = generate_features(generate_data())
-        self.data = pct_data
+        self.data = generate_batches()
         self.num_periods = len(self.data)
-        # self.data = np.random.uniform(-10, 10, size=[batch_size, num_periods*lookback_window]).cumsum(axis=1).reshape([-1, 1, num_periods*lookback_window])
         self._step = 0
         self.spec = EnvSpec(id='StocBot-v1', reward_threshold=10000)
-
-    def reset(self):
-        pct_data = generate_features(generate_data())
-        self.data = pct_data
-        self._step = 0
-        self.price = 0
-        self.rewards = 0
-        self.states = self.ST_NOT_INVESTED
-
-        batch = self.data[self._step]
-        # batch = batch.reshape(nb_sources, 1, lookback_window)
-        self._step += 1
-        return batch.reshape(-1)
+        self.done = False
 
     def _sell(self, _ob):
         reward = 0
@@ -95,11 +84,26 @@ class Game:
         reward = 0
         return reward
 
+    def _next(self):
+        batch = self.data[self._step]
+        self._step += 1
+        batch = batch.reshape(-1, 1, 30)
+        return batch
+
+    def reset(self):
+        self.data = generate_batches()
+        self._step = 0
+        self.price = 0
+        self.rewards = 0
+        self.states = self.ST_NOT_INVESTED
+
+        self.done = False
+        batch = self._next()
+
+        return batch
+
     def step(self, observations, action):
         reward = 0
-        # rewards = np.zeros(shape=(nb_sources), dtype=np.float32)
-        # for row, ob, ac in zip(range(len(observations)), observations, action):
-            # Update states
         if self.AC_INVEST == action:
             reward = self._invest(observations)
         elif self.AC_SELL == action:
@@ -108,10 +112,10 @@ class Game:
         elif self.AC_NOTHING == action:
             reward = self._nothing(observations)
 
-            # self.observations.append(ob)
+        if reward < 0:
+            self.done = True
 
-        batch = self.data[self._step].reshape(-1)
-        self._step += 1
-        done = self._step == self.num_periods
+        batch = self._next()
+        done = (self._step == self.num_periods) or self.done
 
         return batch, reward, done, dict()

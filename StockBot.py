@@ -24,14 +24,25 @@ learning_rate = 0.01
 gamma = 0.99
 
 
+class Flatten(nn.Module):
+    def forward(self, x):
+        x = x.view(x.size()[0], -1)
+        return x
+
+
 class Policy(nn.Module):
     def __init__(self):
         super(Policy, self).__init__()
         self.state_space = env.observation_space
         self.action_space = env.action_space.n
 
+        # Define model
         self.l1 = nn.Linear(self.state_space, 128, bias=False)
         self.l2 = nn.Linear(128, self.action_space, bias=False)
+
+        self.lstm1 = nn.LSTM(self.state_space, 128, 1, batch_first=True) # [batch, seq, feat] -> [1, 30, 1]
+        self.flat = Flatten()
+        self.sftm = nn.Softmax(dim=-1)
 
         self.gamma = gamma
 
@@ -44,33 +55,33 @@ class Policy(nn.Module):
         self.loss_history = []
 
     def forward(self, x):
-        model = torch.nn.Sequential(
-            self.l1,
-            nn.Dropout(p=0.6),
-            nn.ReLU(),
-            self.l2,
-            nn.Softmax(dim=-1)
-        )
-        return model(x)
+        # model = torch.nn.Sequential(
+        #     self.l1,
+        #     nn.Dropout(p=0.6),
+        #     nn.ReLU(),
+        #     self.l2,
+        #     nn.Softmax(dim=-1)
+        # )
+        # return model(x)
+        lstm_out = self.lstm1(x)
+        flat = self.flat(lstm_out)
+        logits = self.l2(flat)
+        pred = self.sftm(logits)
+        return pred
 
 
 policy = Policy()
 optimizer = optim.Adam(policy.parameters(), lr=learning_rate)
 
 
-def select_action(state):
+def select_action(ob):
     # Select an action (0 or 1) by running policy model and choosing based on the probabilities in state
-    # state = torch.from_numpy(state).type(torch.FloatTensor)
-    state = torch.from_numpy(state).float()
-    state = policy(Variable(state))
-    c = Categorical(state)
+    state1 = torch.from_numpy(ob).float()
+    state2 = policy(Variable(state1))
+    c = Categorical(state2)
     action = c.sample()
 
     # Add log probability of our chosen action to our history
-    # if policy.policy_history.dim() != 0:
-    #     policy.policy_history = torch.cat([policy.policy_history, c.log_prob(action)])
-    # else:
-    #     policy.policy_history = (c.log_prob(action))
     policy.policy_history.append(c.log_prob(action))
     return action
 
@@ -139,7 +150,7 @@ def main(episodes):
             break
 
 
-episodes = 1000
+episodes = 5000
 main(episodes)
 
 window = int(episodes/20)
