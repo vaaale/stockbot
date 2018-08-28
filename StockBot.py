@@ -8,7 +8,6 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.distributions import Categorical
 
@@ -16,17 +15,16 @@ from torch.distributions import Categorical
 from game import Game
 
 env = Game()
-# env.seed(1)
-torch.manual_seed(1)
+# torch.manual_seed(1)
 
-# Hyperparameters#Hyperp
+# Hyperparameters
 learning_rate = 0.01
 gamma = 0.99
 
 
 class Flatten(nn.Module):
     def forward(self, x):
-        x = x.view(x.size()[0], -1)
+        x = x.view(-1)
         return x
 
 
@@ -39,9 +37,9 @@ class Policy(nn.Module):
         # Define model
         # self.l1 = nn.Linear(self.state_space, 128, bias=False)
         # self.l2 = nn.Linear(128, self.action_space, bias=False)
-        self.conv1 = nn.Conv1d(1, 128, 5)
-        self.conv2 = nn.Conv1d(128, 256, 5)
-        self.fc1 = nn.Linear(256*22, 3)
+        self.conv1 = nn.Conv1d(2, 64, 5)
+        self.conv2 = nn.Conv1d(64, 128, 5)
+        self.fc1 = nn.Linear(128*22, 3)
 
         self.gamma = gamma
 
@@ -66,13 +64,13 @@ class Policy(nn.Module):
             self.conv1,
             nn.Tanh(),
             self.conv2,
-            nn.Tanh()
+            nn.Tanh(),
+            Flatten(),
+            self.fc1,
+            nn.Softmax(dim=-1),
+            Flatten()
         )
         y = model(x)
-        y = y.view(-1, 256 * 22)
-        y = self.fc1(y)
-        y = nn.Softmax(dim=-1)(y)
-        y = y.view(-1)
 
         return y
 
@@ -127,7 +125,6 @@ def update_policy():
 
 def plot_stats(episode):
     data = env.raw_data
-    print(data.shape)
     xs = np.arange(len(data))
     byes = env.byes
     sells = env.sells
@@ -179,7 +176,7 @@ def main(episodes):
             break
 
 
-episodes = 1000
+episodes = 5000
 main(episodes)
 
 window = int(episodes/20)
