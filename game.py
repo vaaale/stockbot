@@ -41,11 +41,13 @@ class Game:
     AC_INVEST = 0
     AC_SELL = 1
 
+    START_CAPITAL = 2
+
     def __init__(self):
         self.observation_space = lookback_window
         self.action_space = spaces.Discrete(2)
         self.lookback_window = lookback_window
-        self.states = self.ST_NOT_INVESTED
+        self.state = self.ST_NOT_INVESTED
         self.price = 0
         self.rewards = 0
         self.data, self.raw_data = generate_batches()
@@ -55,27 +57,28 @@ class Game:
         self.done = False
         self.byes = []
         self.sells = []
-        self.funds = 10
+        self.funds = self.START_CAPITAL
 
     def _sell(self, _ob):
         reward = 0
-        if self.ST_INVESTED == self.states:
-            # reward += (self.price - _ob.reshape(-1)[-1])
-            rew = self.price - _ob.reshape(-1)[-1]
+        if self.ST_INVESTED == self.state:
+            rew = (self.price - _ob.reshape(-1)[-1])
             self.funds += rew
-            self.states = self.ST_NOT_INVESTED
+            # print(self.funds)
+            self.state = self.ST_NOT_INVESTED
             self.price = 0
-            self.sells.append(self._step)
+            self.sells.append(self._step + 30)
+            reward = 1
 
-        return reward + 1
+        return reward
 
     def _invest(self, _ob):
         reward = 1
 
-        if self.ST_NOT_INVESTED == self.states:
-            self.states = self.ST_INVESTED
+        if self.ST_NOT_INVESTED == self.state:
+            self.state = self.ST_INVESTED
             self.price = _ob.reshape(-1)[-1]
-            self.byes.append(self._step)
+            self.byes.append(self._step + 30)
 
         return reward
 
@@ -88,9 +91,9 @@ class Game:
         batch = self.data[self._step]
         self._step += 1
         batch = batch.reshape(-1, 1, 30)
-        state_feature = np.empty_like(batch)
-        state_feature.fill(self.states)
-        batch = np.hstack([batch, state_feature])
+        # state_feature = np.empty_like(batch)
+        # state_feature.fill(self.state)
+        # batch = np.hstack([batch, state_feature])
         return batch
 
     def reset(self):
@@ -98,8 +101,8 @@ class Game:
         self._step = 0
         self.price = 0
         self.rewards = 0
-        self.states = self.ST_NOT_INVESTED
-        self.funds = 10
+        self.state = self.ST_NOT_INVESTED
+        self.funds = self.START_CAPITAL
 
         self.done = False
         batch = self._next()
@@ -116,10 +119,13 @@ class Game:
         elif self.AC_SELL == action:
             sell = self._sell(observations)
             reward = sell
+        else:
+            print('ERROR!!!')
         # elif self.AC_NOTHING == action:
         #     reward = self._nothing(observations)
 
         if self.funds < 0:
+            # print('Busted!')
             self.done = True
 
         batch = self._next()

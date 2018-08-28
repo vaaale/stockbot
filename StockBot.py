@@ -37,9 +37,9 @@ class Policy(nn.Module):
         # Define model
         # self.l1 = nn.Linear(self.state_space, 128, bias=False)
         # self.l2 = nn.Linear(128, self.action_space, bias=False)
-        self.conv1 = nn.Conv1d(2, 64, 5)
+        self.conv1 = nn.Conv1d(1, 64, 5)
         self.conv2 = nn.Conv1d(64, 128, 5)
-        self.fc1 = nn.Linear(128*22, 3)
+        self.fc1 = nn.Linear(128*22, self.action_space)
 
         self.gamma = gamma
 
@@ -164,10 +164,11 @@ def main(episodes):
 
         update_policy()
 
-        if episode % 50 == 0:
+        if episode % 100 == 0:
             print('Episode {}\tLast length: {:5d}\tAverage length: {:.2f}'.format(episode, time, running_reward))
             print("running_reward: {}, reward_threshold: {}, solved: {}".format(running_reward, env.spec.reward_threshold, running_reward > env.spec.reward_threshold))
             print('Last reward: {}'.format(reward))
+            print('Result funds: {}'.format(env.funds))
             plot_stats(episode)
 
         if running_reward > env.spec.reward_threshold:
