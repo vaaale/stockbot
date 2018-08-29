@@ -4,35 +4,9 @@ import pandas as pd
 from gym import spaces
 from gym.envs.registration import EnvSpec
 
-f = 5
-timesteps = 100
-lookback_window = 30
 
 
-def generate_data():
-    phase = np.random.uniform(-0.5, 0.5, 1)
-#         f = np.random.uniform(1, 50, 1)
-    time = np.linspace(0, 1, timesteps)
-    x = np.sin(2*np.pi*(time + phase) * f) * 1
-    # x = x + np.random.uniform(-0.5, 0.5, timesteps).cumsum()
-    data = np.asarray(x)
-    return data
 
-
-def generate_features(data):
-    df = pd.DataFrame(data)
-    df_pct = ((df.shift(-1) - df) / df.abs())
-    return df_pct, data
-
-
-def generate_batches():
-    data = generate_data()
-    # data = np.arange(0,100, 1)
-    features, data = generate_features(data)
-    # features = pd.DataFrame(data)
-
-    batches = np.asarray([features[i:i + lookback_window].values for i in range(0, features.shape[0] - lookback_window, 1)])
-    return batches, data
 
 class Game:
     ST_NOT_INVESTED = 0
@@ -44,14 +18,18 @@ class Game:
 
     START_CAPITAL = 0
 
+    f = 5
+    timesteps = 100
+    lookback_window = 30
+
     def __init__(self):
-        self.observation_space = lookback_window
+        self.observation_space = self.lookback_window
         self.action_space = spaces.Discrete(2)
-        self.lookback_window = lookback_window
+        self.lookback_window = self.lookback_window
         self.state = self.ST_NOT_INVESTED
         self.price = 0
         self.rewards = 0
-        self.data, self.raw_data = generate_batches()
+        self.data, self.raw_data = self.generate_batches()
         self.num_periods = len(self.data)
         self._step = 0
         self.spec = EnvSpec(id='StockBroker-v1', reward_threshold=1000)
@@ -60,11 +38,35 @@ class Game:
         self.sells = []
         self.funds = self.START_CAPITAL
 
+    def generate_data(self):
+        phase = np.random.uniform(-0.5, 0.5, 1)
+        #         f = np.random.uniform(1, 50, 1)
+        time = np.linspace(0, 1, self.timesteps)
+        x = np.sin(2 * np.pi * (time + phase) * self.f) * 1
+        # x = x + np.random.uniform(-0.5, 0.5, timesteps).cumsum()
+        data = np.asarray(x)
+        return data
+
+    def generate_features(self, data):
+        df = pd.DataFrame(data)
+        df_pct = ((df.shift(-1) - df) / df.abs())
+        return df_pct, data
+
+    def generate_batches(self):
+        data = self.generate_data()
+        # data = np.arange(0,100, 1)
+        features, data = self.generate_features(data)
+        # features = pd.DataFrame(data)
+
+        batches = np.asarray(
+            [features[i:i + self.lookback_window].values for i in range(0, features.shape[0] - self.lookback_window, 1)])
+        return batches, data
+
     def _sell(self, _ob):
         reward = 0
         if self.ST_INVESTED == self.state:
             # rew = (self.price - _ob.reshape(-1)[-1])
-            current_price = self.raw_data[self._step+lookback_window-1]
+            current_price = self.raw_data[self._step+self.lookback_window-1]
             rew = current_price - self.price
 
             if current_price != _ob.reshape(-1)[-1]:
@@ -77,7 +79,7 @@ class Game:
             # print(self.funds)
             self.state = self.ST_NOT_INVESTED
             self.price = 0
-            self.sells.append(self._step + lookback_window)
+            self.sells.append(self._step + self.lookback_window)
             reward = 1
 
         return reward
@@ -88,12 +90,12 @@ class Game:
         if self.ST_NOT_INVESTED == self.state:
             self.state = self.ST_INVESTED
             # self.price = _ob.reshape(-1)[-1]
-            self.price = self.raw_data[self._step+lookback_window-1]
+            self.price = self.raw_data[self._step+self.lookback_window-1]
             if self.price != _ob.reshape(-1)[-1]:
                 print("Bye Prices differ: {} vs {}".format(self.price , _ob.reshape(-1)[-1]))
                 print('')
 
-            self.byes.append(self._step + lookback_window)
+            self.byes.append(self._step + self.lookback_window)
 
         return reward
 
@@ -111,7 +113,7 @@ class Game:
         return batch
 
     def reset(self):
-        self.data, self.raw_data = generate_batches()
+        self.data, self.raw_data = self.generate_batches()
         self._step = 0
         self.price = 0
         self.rewards = 0
