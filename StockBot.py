@@ -126,18 +126,18 @@ def update_policy():
 def plot_stats(episode):
     data = env.raw_data
     xs = np.arange(len(data))
-    byes = env.byes
-    sells = env.sells
+    x_byes = env.byes
+    x_sells = env.sells
 
-    print('Byes: {}'.format(byes))
-    print('Sells: {}'.format(sells))
+    print('Byes: {}'.format(x_byes))
+    print('Sells: {}'.format(x_sells))
 
-    ys2 = [data[b] for b in byes]
-    ys3 = [data[s] for s in sells]
+    y_byes = [data[b] for b in x_byes]
+    y_sells = [data[s] for s in x_sells]
 
     plt.plot(xs, data)
-    plt.scatter(byes, ys2, color='green', marker='o')
-    plt.scatter(sells, ys3, color='blue', marker='X')
+    plt.scatter(x_byes, y_byes, color='green', marker='o')
+    plt.scatter(x_sells, y_sells, color='blue', marker='X')
     plt.savefig('figures/plot{}.png'.format(episode))
     plt.clf()
 
@@ -167,7 +167,7 @@ def main(episodes):
         if episode % 100 == 0:
             print('Episode {}\tLast length: {:5d}\tAverage length: {:.2f}'.format(episode, time, running_reward))
             print("running_reward: {}, reward_threshold: {}, solved: {}".format(running_reward, env.spec.reward_threshold, running_reward > env.spec.reward_threshold))
-            print('Last reward: {}'.format(reward))
+            print('Last reward: {} at time: {}'.format(reward, time))
             print('Result funds: {}'.format(env.funds))
             plot_stats(episode)
 

@@ -27,6 +27,7 @@ def generate_features(data):
 
 def generate_batches():
     data = generate_data()
+    # data = np.arange(0,100, 1)
     features, data = generate_features(data)
     # features = pd.DataFrame(data)
 
@@ -53,7 +54,7 @@ class Game:
         self.data, self.raw_data = generate_batches()
         self.num_periods = len(self.data)
         self._step = 0
-        self.spec = EnvSpec(id='StocBot-v1', reward_threshold=1000)
+        self.spec = EnvSpec(id='StockBroker-v1', reward_threshold=1000)
         self.done = False
         self.byes = []
         self.sells = []
@@ -62,7 +63,16 @@ class Game:
     def _sell(self, _ob):
         reward = 0
         if self.ST_INVESTED == self.state:
-            rew = (self.price - _ob.reshape(-1)[-1])
+            # rew = (self.price - _ob.reshape(-1)[-1])
+            current_price = self.raw_data[self._step+lookback_window-1]
+            rew = current_price - self.price
+
+            if current_price != _ob.reshape(-1)[-1]:
+                print("Sell Prices differ: {} vs {}".format(self.price , _ob.reshape(-1)[-1]))
+                print('')
+
+
+
             self.funds += rew
             # print(self.funds)
             self.state = self.ST_NOT_INVESTED
@@ -77,7 +87,12 @@ class Game:
 
         if self.ST_NOT_INVESTED == self.state:
             self.state = self.ST_INVESTED
-            self.price = _ob.reshape(-1)[-1]
+            # self.price = _ob.reshape(-1)[-1]
+            self.price = self.raw_data[self._step+lookback_window-1]
+            if self.price != _ob.reshape(-1)[-1]:
+                print("Bye Prices differ: {} vs {}".format(self.price , _ob.reshape(-1)[-1]))
+                print('')
+
             self.byes.append(self._step + lookback_window)
 
         return reward
@@ -89,7 +104,6 @@ class Game:
 
     def _next(self):
         batch = self.data[self._step]
-        self._step += 1
         batch = batch.reshape(-1, 1, 30)
         # state_feature = np.empty_like(batch)
         # state_feature.fill(self.state)
@@ -125,13 +139,13 @@ class Game:
         if self.funds < 0:
             # print('Busted!')
             self.done = True
-
-        if self.done:
             reward = self.funds
+            print("self.funds: {}, reward: {}".format(self.funds, reward))
         else:
             reward = 0
 
+        self._step += 1
+        done = (self._step == self.num_periods-1) or self.done
         batch = self._next()
-        done = (self._step == self.num_periods) or self.done
 
         return batch, reward, done, dict()
