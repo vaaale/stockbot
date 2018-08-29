@@ -26,9 +26,9 @@ def generate_features(data):
 
 
 def generate_batches():
-    # features, data = generate_features(generate_data())
     data = generate_data()
-    features = pd.DataFrame(data)
+    features, data = generate_features(data)
+    # features = pd.DataFrame(data)
 
     batches = np.asarray([features[i:i + lookback_window].values for i in range(0, features.shape[0] - lookback_window, 1)])
     return batches, data
@@ -37,11 +37,11 @@ class Game:
     ST_NOT_INVESTED = 0
     ST_INVESTED = 1
 
-    # AC_NOTHING = 0
-    AC_INVEST = 0
+    AC_BUY = 0
     AC_SELL = 1
+    AC_NOTHING = 2
 
-    START_CAPITAL = 2
+    START_CAPITAL = 0
 
     def __init__(self):
         self.observation_space = lookback_window
@@ -67,7 +67,7 @@ class Game:
             # print(self.funds)
             self.state = self.ST_NOT_INVESTED
             self.price = 0
-            self.sells.append(self._step + 30)
+            self.sells.append(self._step + lookback_window)
             reward = 1
 
         return reward
@@ -78,7 +78,7 @@ class Game:
         if self.ST_NOT_INVESTED == self.state:
             self.state = self.ST_INVESTED
             self.price = _ob.reshape(-1)[-1]
-            self.byes.append(self._step + 30)
+            self.byes.append(self._step + lookback_window)
 
         return reward
 
@@ -114,19 +114,22 @@ class Game:
 
     def step(self, observations, action):
         reward = 0
-        if self.AC_INVEST == action:
+        if self.AC_BUY == action:
             reward = self._invest(observations)
         elif self.AC_SELL == action:
             sell = self._sell(observations)
             reward = sell
-        else:
-            print('ERROR!!!')
-        # elif self.AC_NOTHING == action:
-        #     reward = self._nothing(observations)
+        elif self.AC_NOTHING == action:
+            reward = self._nothing(observations)
 
         if self.funds < 0:
             # print('Busted!')
             self.done = True
+
+        if self.done:
+            reward = self.funds
+        else:
+            reward = 0
 
         batch = self._next()
         done = (self._step == self.num_periods) or self.done
