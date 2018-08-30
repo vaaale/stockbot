@@ -8,10 +8,8 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.autograd import Variable
 from torch.distributions import Categorical
 
-# env = gym.make('CartPole-v1')
 from game import Game
 
 env = Game()
@@ -35,8 +33,6 @@ class Policy(nn.Module):
         self.action_space = env.action_space.n
 
         # Define model
-        # self.l1 = nn.Linear(self.state_space, 128, bias=False)
-        # self.l2 = nn.Linear(128, self.action_space, bias=False)
         self.conv1 = nn.Conv1d(1, 64, 5)
         self.conv2 = nn.Conv1d(64, 128, 5)
         self.fc1 = nn.Linear(128*22, self.action_space)
@@ -108,8 +104,7 @@ def update_policy():
 
     # Calculate loss
     history = torch.stack(policy.policy_history, 0)
-    # loss = (torch.sum(torch.mul(policy.policy_history, Variable(rewards)).mul(-1), -1))
-    loss = (torch.sum(torch.mul(history, Variable(rewards)).mul(-1), -1))
+    loss = (torch.sum(torch.mul(history, rewards).mul(-1), -1))
 
     # Update network weights
     optimizer.zero_grad()
@@ -117,9 +112,8 @@ def update_policy():
     optimizer.step()
 
     # Save and intialize episode history counters
-    policy.loss_history.append(loss.data[0])
+    policy.loss_history.append(loss.item())
     policy.reward_history.append(np.sum(policy.reward_episode))
-    # policy.policy_history = Variable(torch.Tensor())
     policy.policy_history = []
     policy.reward_episode = []
 
