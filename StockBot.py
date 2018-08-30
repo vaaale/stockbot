@@ -82,7 +82,8 @@ optimizer = optim.Adam(policy.parameters(), lr=learning_rate)
 def select_action(ob):
     # Select an action (0 or 1) by running policy model and choosing based on the probabilities in state
     state1 = torch.from_numpy(ob).float()
-    state2 = policy(Variable(state1))
+    # state2 = policy(Variable(state1))
+    state2 = policy(state1)
     c = Categorical(state2)
     action = c.sample()
 
@@ -167,7 +168,6 @@ def main(episodes):
         if episode % 100 == 0:
             print('Episode {}\tLast length: {:5d}\tAverage length: {:.2f}'.format(episode, time, running_reward))
             print("running_reward: {}, reward_threshold: {}, solved: {}".format(running_reward, env.spec.reward_threshold, running_reward > env.spec.reward_threshold))
-            print('Last reward: {} at time: {}'.format(reward, time))
             print('Result funds: {}'.format(env.funds))
             plot_stats(episode)
 

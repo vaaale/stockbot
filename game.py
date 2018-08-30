@@ -22,6 +22,8 @@ class Game:
     timesteps = 100
     lookback_window = 30
 
+    DEBUG = False
+
     def __init__(self):
         self.observation_space = self.lookback_window
         self.action_space = spaces.Discrete(2)
@@ -48,15 +50,18 @@ class Game:
         return data
 
     def generate_features(self, data):
-        df = pd.DataFrame(data)
-        df_pct = ((df.shift(-1) - df) / df.abs())
-        return df_pct, data
+        df = pd.DataFrame(data, columns=['price'])
+        df['pct_change'] = ((df.shift(-1) - df) / df.abs()).shift(1)
+
+        return df.iloc[1:]
 
     def generate_batches(self):
         data = self.generate_data()
         # data = np.arange(0,100, 1)
-        features, data = self.generate_features(data)
+        df = self.generate_features(data)
         # features = pd.DataFrame(data)
+        data = df['price'].values
+        features = df['pct_change']
 
         batches = np.asarray(
             [features[i:i + self.lookback_window].values for i in range(0, features.shape[0] - self.lookback_window, 1)])
@@ -69,11 +74,9 @@ class Game:
             current_price = self.raw_data[self._step+self.lookback_window-1]
             rew = current_price - self.price
 
-            if current_price != _ob.reshape(-1)[-1]:
+            if self.DEBUG and current_price != _ob.reshape(-1)[-1]:
                 print("Sell Prices differ: {} vs {}".format(self.price , _ob.reshape(-1)[-1]))
                 print('')
-
-
 
             self.funds += rew
             # print(self.funds)
@@ -91,7 +94,7 @@ class Game:
             self.state = self.ST_INVESTED
             # self.price = _ob.reshape(-1)[-1]
             self.price = self.raw_data[self._step+self.lookback_window-1]
-            if self.price != _ob.reshape(-1)[-1]:
+            if self.DEBUG and self.price != _ob.reshape(-1)[-1]:
                 print("Bye Prices differ: {} vs {}".format(self.price , _ob.reshape(-1)[-1]))
                 print('')
 
@@ -107,9 +110,6 @@ class Game:
     def _next(self):
         batch = self.data[self._step]
         batch = batch.reshape(-1, 1, 30)
-        # state_feature = np.empty_like(batch)
-        # state_feature.fill(self.state)
-        # batch = np.hstack([batch, state_feature])
         return batch
 
     def reset(self):
@@ -131,23 +131,24 @@ class Game:
     def step(self, observations, action):
         reward = 0
         if self.AC_BUY == action:
-            reward = self._invest(observations)
+            _ = self._invest(observations)
         elif self.AC_SELL == action:
-            sell = self._sell(observations)
-            reward = sell
+            _ = self._sell(observations)
         elif self.AC_NOTHING == action:
-            reward = self._nothing(observations)
+            _ = self._nothing(observations)
 
         if self.funds < 0:
             # print('Busted!')
             self.done = True
-            reward = self.funds
-            print("self.funds: {}, reward: {}".format(self.funds, reward))
+            # reward = self.funds
         else:
             reward = 0
 
         self._step += 1
         done = (self._step == self.num_periods-1) or self.done
+        if done:
+            reward = self.funds
+
         batch = self._next()
 
         return batch, reward, done, dict()
