@@ -35,7 +35,24 @@ class Policy(nn.Module):
         # Define model
         self.conv1 = nn.Conv1d(1, 64, 5)
         self.conv2 = nn.Conv1d(64, 128, 5)
-        self.fc1 = nn.Linear(128*22, self.action_space)
+        # self.fc1 = nn.Linear(128*22, self.action_space)
+        self.fc1_1 = nn.Linear(128*22, 64)
+        self.fc1_2 = nn.Linear(self.action_space, 64, bias=False)
+        self.fc2 = nn.Linear(128, self.action_space)
+
+        self.features = torch.nn.Sequential(
+            self.conv1,
+            nn.Tanh(),
+            self.conv2,
+            nn.Tanh(),
+            Flatten(),
+            self.fc1_1
+        )
+
+        self.state_features = torch.nn.Sequential(
+            self.fc1_2,
+            Flatten()
+        )
 
         self.gamma = gamma
 
@@ -47,26 +64,25 @@ class Policy(nn.Module):
         self.reward_history = []
         self.loss_history = []
 
-    def forward(self, x):
+    def forward(self, x1, x2):
         # model = torch.nn.Sequential(
-        #     self.l1,
-        #     nn.Dropout(p=0.6),
-        #     nn.ReLU(),
-        #     self.l2,
-        #     nn.Softmax(dim=-1)
+        #     self.conv1,
+        #     nn.Tanh(),
+        #     self.conv2,
+        #     nn.Tanh(),
+        #     Flatten(),
+        #     self.fc1,
+        #     nn.Softmax(dim=-1),
+        #     Flatten()
         # )
-        # return model(x)
-        model = torch.nn.Sequential(
-            self.conv1,
-            nn.Tanh(),
-            self.conv2,
-            nn.Tanh(),
-            Flatten(),
-            self.fc1,
-            nn.Softmax(dim=-1),
-            Flatten()
-        )
-        y = model(x)
+        #
+        # y = model(x)
+
+        features = self.features(x1)
+        state = self.state_features(x2)
+        y = torch.cat((features, state), 0)
+        y = self.fc2(y)
+        y = nn.Softmax(dim=-1)(y)
 
         return y
 
@@ -77,9 +93,9 @@ optimizer = optim.Adam(policy.parameters(), lr=learning_rate)
 
 def select_action(ob):
     # Select an action (0 or 1) by running policy model and choosing based on the probabilities in state
-    state1 = torch.from_numpy(ob).float()
-    # state2 = policy(Variable(state1))
-    state2 = policy(state1)
+    state1 = torch.from_numpy(ob[0]).float()
+    state1_1 = torch.from_numpy(ob[1]).float()
+    state2 = policy(state1, state1_1)
     c = Categorical(state2)
     action = c.sample()
 

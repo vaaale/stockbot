@@ -68,7 +68,7 @@ class Game:
         return batches, data
 
     def _sell(self, _ob):
-        reward = 0
+        reward = 1
         if self.ST_INVESTED == self.state:
             # rew = (self.price - _ob.reshape(-1)[-1])
             current_price = self.raw_data[self._step+self.lookback_window-1]
@@ -83,7 +83,8 @@ class Game:
             self.state = self.ST_NOT_INVESTED
             self.price = 0
             self.sells.append(self._step + self.lookback_window)
-            reward = 1
+        else:
+            reward = -0.01
 
         return reward
 
@@ -99,6 +100,8 @@ class Game:
                 print('')
 
             self.byes.append(self._step + self.lookback_window)
+        else:
+            reward = -0.01
 
         return reward
 
@@ -110,7 +113,9 @@ class Game:
     def _next(self):
         batch = self.data[self._step]
         batch = batch.reshape(-1, 1, 30)
-        return batch
+        broker_state = np.zeros([1, self.action_space.n])
+        broker_state[0, self.state] = 1
+        return batch, broker_state
 
     def reset(self):
         self.data, self.raw_data = self.generate_batches()
