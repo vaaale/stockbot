@@ -3,6 +3,7 @@
 import gym
 import numpy as np
 import matplotlib.pyplot as plt
+from torch.autograd import Variable
 from tqdm import tqdm, trange
 import pandas as pd
 import torch
@@ -17,7 +18,7 @@ env = Game()
 
 # Hyperparameters
 learning_rate = 0.01
-gamma = 0.99
+gamma = 0.8
 
 
 class Flatten(nn.Module):
@@ -31,33 +32,34 @@ class Policy(nn.Module):
         super(Policy, self).__init__()
         self.state_space = env.observation_space
         self.action_space = env.action_space.n
+        self.nb_features = env.nb_features
 
         # Define model
-        self.conv1 = nn.Conv1d(1, 64, 5)
+        self.conv1 = nn.Conv1d(self.nb_features, 64, 5)
         self.conv2 = nn.Conv1d(64, 128, 5)
-        # self.fc1 = nn.Linear(128*22, self.action_space)
-        self.fc1_1 = nn.Linear(128*22, 64)
-        self.fc1_2 = nn.Linear(self.action_space, 64, bias=False)
-        self.fc2 = nn.Linear(128, self.action_space)
+        self.fc1 = nn.Linear(128*(env.lookback_window-8), self.action_space)
+        # self.fc1_1 = nn.Linear(64*(env.lookback_window-4), 64)
+        # self.fc1_2 = nn.Linear(self.action_space, 64, bias=False)
+        # self.fc2 = nn.Linear(128, self.action_space)
+        # self.softmax = nn.Softmax(dim=-1)
 
-        self.features = torch.nn.Sequential(
-            self.conv1,
-            nn.Tanh(),
-            self.conv2,
-            nn.Tanh(),
-            Flatten(),
-            self.fc1_1
-        )
-
-        self.state_features = torch.nn.Sequential(
-            self.fc1_2,
-            Flatten()
-        )
+        # self.features = torch.nn.Sequential(
+        #     self.conv1,
+        #     nn.Tanh(),
+        #     # self.conv2,
+        #     # nn.Tanh(),
+        #     Flatten(),
+        #     self.fc1_1
+        # )
+        #
+        # self.state_features = torch.nn.Sequential(
+        #     self.fc1_2,
+        #     Flatten()
+        # )
 
         self.gamma = gamma
 
         # Episode policy and reward history
-        # self.policy_history = Variable(torch.Tensor())
         self.policy_history = []
         self.reward_episode = []
         # Overall reward and loss history
@@ -65,24 +67,24 @@ class Policy(nn.Module):
         self.loss_history = []
 
     def forward(self, x1, x2):
-        # model = torch.nn.Sequential(
-        #     self.conv1,
-        #     nn.Tanh(),
-        #     self.conv2,
-        #     nn.Tanh(),
-        #     Flatten(),
-        #     self.fc1,
-        #     nn.Softmax(dim=-1),
-        #     Flatten()
-        # )
-        #
-        # y = model(x)
+        model = torch.nn.Sequential(
+            self.conv1,
+            nn.Tanh(),
+            self.conv2,
+            nn.Tanh(),
+            Flatten(),
+            self.fc1,
+            nn.Softmax(dim=-1),
+            Flatten()
+        )
 
-        features = self.features(x1)
-        state = self.state_features(x2)
-        y = torch.cat((features, state), 0)
-        y = self.fc2(y)
-        y = nn.Softmax(dim=-1)(y)
+        y = model(x1)
+
+        # features = self.features(x1)
+        # state = self.state_features(x2)
+        # y = torch.cat((features, state), 0)
+        # y = self.fc2(y)
+        # y = self.softmax(y)
 
         return y
 
@@ -93,9 +95,9 @@ optimizer = optim.Adam(policy.parameters(), lr=learning_rate)
 
 def select_action(ob):
     # Select an action (0 or 1) by running policy model and choosing based on the probabilities in state
-    state1 = torch.from_numpy(ob[0]).float()
-    state1_1 = torch.from_numpy(ob[1]).float()
-    state2 = policy(state1, state1_1)
+    state_history = torch.from_numpy(ob[0]).float()
+    state_state = torch.from_numpy(ob[1]).float()
+    state2 = policy(state_history, state_state)
     c = Categorical(state2)
     action = c.sample()
 
@@ -108,19 +110,25 @@ def update_policy():
     R = 0
     rewards = []
 
+    # print('REWARD HISTORY')
+    # print(policy.reward_episode)
     # Discount future rewards back to the present using gamma
     for r in policy.reward_episode[::-1]:
         R = r + policy.gamma * R
         rewards.insert(0, R)
 
     # Scale rewards
-    rewards = torch.FloatTensor(rewards)
+    t_rewards = torch.FloatTensor(rewards)
     eps = float(np.finfo(np.float32).eps)
-    rewards = (rewards - rewards.mean()) / (rewards.std() + eps)
+    t_rewards = (t_rewards - t_rewards.mean()) / (t_rewards .std() + eps)
 
     # Calculate loss
     history = torch.stack(policy.policy_history, 0)
-    loss = (torch.sum(torch.mul(history, rewards).mul(-1), -1))
+    # loss = (torch.sum(torch.mul(policy.policy_history, Variable(rewards)).mul(-1), -1))
+    hist_reward = torch.mul(history, t_rewards)
+    print('Hist * reward =  {}'.format(hist_reward))
+    loss = (torch.sum(hist_reward.mul(-1), -1))
+    print('Loss {}'.format(loss))
 
     # Update network weights
     optimizer.zero_grad()
@@ -135,13 +143,18 @@ def update_policy():
 
 
 def plot_stats(episode):
-    data = env.raw_data
+    data = env.close
     xs = np.arange(len(data))
     x_byes = env.byes
     x_sells = env.sells
 
     print('Byes: {}'.format(x_byes))
     print('Sells: {}'.format(x_sells))
+    print('Nothing: {}'.format(env.nothing))
+
+    print('Miss Byes: {}'.format(env.miss_byes))
+    print('Miss Sells: {}'.format(env.miss_sells))
+
 
     y_byes = [data[b] for b in x_byes]
     y_sells = [data[s] for s in x_sells]
@@ -187,7 +200,7 @@ def main(episodes):
             break
 
 
-episodes = 5000
+episodes = 1000
 main(episodes)
 
 window = int(episodes/20)
