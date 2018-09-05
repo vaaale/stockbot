@@ -35,58 +35,37 @@ class Policy(nn.Module):
         self.nb_features = env.nb_features
 
         # Define model
-        self.conv1 = nn.Conv1d(self.nb_features, 64, 5)
-        self.conv2 = nn.Conv1d(64, 128, 5)
-        self.fc1 = nn.Linear(128*(env.lookback_window-8), self.action_space)
-        # self.fc1_1 = nn.Linear(64*(env.lookback_window-4), 64)
-        # self.fc1_2 = nn.Linear(self.action_space, 64, bias=False)
-        # self.fc2 = nn.Linear(128, self.action_space)
-        # self.softmax = nn.Softmax(dim=-1)
-
-        # self.features = torch.nn.Sequential(
-        #     self.conv1,
-        #     nn.Tanh(),
-        #     # self.conv2,
-        #     # nn.Tanh(),
-        #     Flatten(),
-        #     self.fc1_1
-        # )
-        #
-        # self.state_features = torch.nn.Sequential(
-        #     self.fc1_2,
-        #     Flatten()
-        # )
+        # self.conv1 = nn.Conv1d(self.nb_features, 64, 5, bias=False)
+        # self.conv2 = nn.Conv1d(64, 128, 5, bias=False)
+        # self.fc1 = nn.Linear(128*(env.lookback_window-8), self.action_space, bias=False)
+        self.l1 = nn.Linear(self.state_space, 128, bias=False)
+        self.l2 = nn.Linear(128, self.action_space, bias=False)
+        self.softmax = nn.Softmax(dim=-1)
 
         self.gamma = gamma
 
         # Episode policy and reward history
         self.policy_history = []
+        self.np_policy_history = []
         self.reward_episode = []
         # Overall reward and loss history
         self.reward_history = []
         self.loss_history = []
 
-    def forward(self, x1, x2):
-        model = torch.nn.Sequential(
-            self.conv1,
-            nn.Tanh(),
-            self.conv2,
-            nn.Tanh(),
-            Flatten(),
-            self.fc1,
-            nn.Softmax(dim=-1),
-            Flatten()
-        )
-
-        y = model(x1)
-
-        # features = self.features(x1)
-        # state = self.state_features(x2)
-        # y = torch.cat((features, state), 0)
-        # y = self.fc2(y)
-        # y = self.softmax(y)
-
-        return y
+    def forward(self, x):
+        # model = torch.nn.Sequential(
+        #     self.l1,
+        #     nn.Dropout(p=0.6),
+        #     nn.ReLU(),
+        #     self.l2
+        # )
+        # logits = model(x)
+        l1_out = self.l1(x)
+        d_out = nn.Dropout(p=0.6)(l1_out)
+        l2_out = self.l2(d_out)
+        rel_out = nn.ReLU()(l2_out)
+        probs = self.softmax(rel_out)
+        return probs, l1_out, d_out, l2_out, rel_out
 
 
 policy = Policy()
@@ -95,18 +74,48 @@ optimizer = optim.Adam(policy.parameters(), lr=learning_rate)
 
 def select_action(ob):
     # Select an action (0 or 1) by running policy model and choosing based on the probabilities in state
-    state_history = torch.from_numpy(ob[0]).float()
-    state_state = torch.from_numpy(ob[1]).float()
-    state2 = policy(state_history, state_state)
-    c = Categorical(state2)
+    state_history = torch.from_numpy(ob[0].reshape(policy.state_space)).float()
+    probs, l1_out, d_out, l2_out, rel_out = policy(state_history)
+    c = Categorical(probs)
     action = c.sample()
 
     # Add log probability of our chosen action to our history
     policy.policy_history.append(c.log_prob(action))
+    policy.np_policy_history.append(c.log_prob(action).detach())
     return action
 
-
 def update_policy():
+    R = 0
+    rewards = []
+
+    # Discount future rewards back to the present using gamma
+    for r in policy.reward_episode[::-1]:
+        R = r + policy.gamma * R
+        rewards.insert(0, R)
+
+    # Scale rewards
+    rewards = torch.FloatTensor(rewards)
+    eps = float(np.finfo(np.float32).eps)
+    rewards = (rewards - rewards.mean()) / (rewards.std() + eps)
+
+    # Calculate loss
+    history = torch.stack(policy.policy_history, 0)
+    # loss = (torch.sum(torch.mul(policy.policy_history, Variable(rewards)).mul(-1), -1))
+    loss = (torch.sum(torch.mul(history, Variable(rewards)).mul(-1), -1))
+
+    # Update network weights
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+    # Save and intialize episode history counters
+    policy.loss_history.append(loss.data[0])
+    policy.reward_history.append(np.sum(policy.reward_episode))
+    # policy.policy_history = Variable(torch.Tensor())
+    policy.policy_history = []
+    policy.reward_episode = []
+
+def ann_update_policy():
     R = 0
     rewards = []
 
@@ -117,18 +126,38 @@ def update_policy():
         R = r + policy.gamma * R
         rewards.insert(0, R)
 
+    rewards = np.asarray(rewards, dtype=np.float32)
+
     # Scale rewards
     t_rewards = torch.FloatTensor(rewards)
     eps = float(np.finfo(np.float32).eps)
-    t_rewards = (t_rewards - t_rewards.mean()) / (t_rewards .std() + eps)
+    print('t_mean {}'.format(t_rewards.mean()))
+    print('t_std {}'.format(t_rewards.std()))
+
+    print('np_mean {}'.format(np.mean(rewards)))
+    print('np_std {}'.format(np.std(rewards, ddof=1)))
+    t_rewards = (t_rewards - t_rewards.mean()) / (t_rewards.std() + eps)
+    np_rewards = (rewards - np.mean(rewards)) / (np.std(rewards, ddof=1) + eps)
+
+    print('t_rewards {}'.format(t_rewards))
+    print('np_rewards {}'.format(np_rewards))
 
     # Calculate loss
-    history = torch.stack(policy.policy_history, 0)
+    t_history = torch.stack(policy.policy_history, 0)
+    np_history = np.hstack(policy.np_policy_history)
+    print('t_history {}'.format(t_history))
+    print('np_history {}'.format(np_history))
+
     # loss = (torch.sum(torch.mul(policy.policy_history, Variable(rewards)).mul(-1), -1))
-    hist_reward = torch.mul(history, t_rewards)
-    print('Hist * reward =  {}'.format(hist_reward))
-    loss = (torch.sum(hist_reward.mul(-1), -1))
-    print('Loss {}'.format(loss))
+    hist_reward = torch.mul(t_history, t_rewards)
+    np_hist_reward = np_history * np_rewards
+    print('hist_reward {}'.format(hist_reward))
+    print('np_hist_reward {}'.format(np_hist_reward))
+
+    loss = torch.sum(hist_reward.mul(-1), -1)
+    np_loss = np.sum((np_hist_reward*-1), -1)
+    print('t_loss {}'.format(loss))
+    print('np_loss {}'.format(np_loss))
 
     # Update network weights
     optimizer.zero_grad()
@@ -139,6 +168,7 @@ def update_policy():
     policy.loss_history.append(loss.item())
     policy.reward_history.append(np.sum(policy.reward_episode))
     policy.policy_history = []
+    policy.np_policy_history = []
     policy.reward_episode = []
 
 
