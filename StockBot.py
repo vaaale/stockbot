@@ -38,7 +38,7 @@ class Policy(nn.Module):
         # self.conv1 = nn.Conv1d(self.nb_features, 64, 5, bias=False)
         # self.conv2 = nn.Conv1d(64, 128, 5, bias=False)
         # self.fc1 = nn.Linear(128*(env.lookback_window-8), self.action_space, bias=False)
-        self.l1 = nn.Linear(self.state_space, 128, bias=False)
+        self.l1 = nn.Linear(self.state_space*self.nb_features, 128, bias=False)
         self.l2 = nn.Linear(128, self.action_space, bias=False)
         self.softmax = nn.Softmax(dim=-1)
 
@@ -74,7 +74,7 @@ optimizer = optim.Adam(policy.parameters(), lr=learning_rate)
 
 def select_action(ob):
     # Select an action (0 or 1) by running policy model and choosing based on the probabilities in state
-    state_history = torch.from_numpy(ob[0].reshape(policy.state_space)).float()
+    state_history = torch.from_numpy(ob[0].reshape(policy.state_space*policy.nb_features)).float()
     probs, l1_out, d_out, l2_out, rel_out = policy(state_history)
     c = Categorical(probs)
     action = c.sample()
@@ -83,6 +83,7 @@ def select_action(ob):
     policy.policy_history.append(c.log_prob(action))
     policy.np_policy_history.append(c.log_prob(action).detach())
     return action
+
 
 def update_policy():
     R = 0
@@ -230,7 +231,7 @@ def main(episodes):
             break
 
 
-episodes = 1000
+episodes = 5000
 main(episodes)
 
 window = int(episodes/20)

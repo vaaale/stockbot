@@ -26,7 +26,7 @@ class Game:
 
     def __init__(self):
         self.observation_space = self.lookback_window
-        self.nb_features = 1
+        self.nb_features = 2
         self.action_space = spaces.Discrete(2)
         self.lookback_window = self.lookback_window
         self.state = self.ST_NOT_INVESTED
@@ -49,19 +49,20 @@ class Game:
         #         f = np.random.uniform(1, 50, 1)
         time = np.linspace(0, 1, self.timesteps)
         x = np.sin(2 * np.pi * (time + phase) * self.f) * 1
-        # x = x + np.random.uniform(-0.5, 0.5, timesteps).cumsum()
+        x = x + np.random.uniform(-0.5, 0.5, self.timesteps).cumsum()
         data = np.asarray(x)
         return data
 
     def generate_features(self, data):
         df = pd.DataFrame(data, columns=['close'])
         df['pct_change'] = ((df.shift(-1) - df) / df.abs()).shift(1)
-        # df['rsi'] = feat.rsi(data)
+        df['rsi'] = feat.rsi(data)
         # df['wma14'] = np.hstack([np.zeros(14 - 1), feat.movingaverage(data, window=14)])
         # df['wma50'] = np.hstack([np.zeros(50 - 1), feat.movingaverage(data, window=50)])
         # df['wma200'] = np.hstack([np.zeros(200 - 1), feat.movingaverage(data, window=200)])
-        # df = df.iloc[200 - 1:]
-        return df.iloc[1:]
+        df = df.iloc[200 - 1:]
+        # return df.iloc[1:]
+        return df
 
     def generate_batches(self):
         data = self.generate_data()
@@ -71,8 +72,8 @@ class Game:
         close = df['close'].values
         # features = df['pct_change']
         # features = df[['pct_change', 'rsi', 'wma14', 'wma50', 'wma200']]
-        # features = df[['pct_change', 'rsi']]
-        features = df[['pct_change']]
+        features = df[['pct_change', 'rsi']]
+        # features = df[['pct_change']]
 
         batches = np.asarray([features[i:i + self.lookback_window].values for i in range(0, features.shape[0] - self.lookback_window, 1)])
         return batches, close
@@ -85,7 +86,7 @@ class Game:
             rew = current_price - self.price
 
             if self.DEBUG and current_price != _ob.reshape(-1)[-1]:
-                print("Sell Prices differ: {} vs {}".format(self.price , _ob.reshape(-1)[-1]))
+                print("Sell Prices differ: {} vs {}".format(self.price, _ob.reshape(-1)[-1]))
                 print('')
 
             self.funds += rew
